@@ -1,10 +1,14 @@
-// Expose Espressif SDK functionality - wrapped in ifdef so that it still
-// compiles on other platforms
-#ifdef ESP8266
+// based on RandDruid/esp8266-deauth (MIT) https://github.com/RandDruid/esp8266-deauth
+// requires SDK v1.3: install esp8266/Arduino from git and checkout commit 1c5751460b7988041fdc80e0f28a31464cdf97a3
+
+// Expose Espressif SDK functionality
 extern "C" {
 #include "user_interface.h"
+  typedef void (*freedom_outside_cb_t)(uint8 status);
+  int wifi_register_send_pkt_freedom_cb(freedom_outside_cb_t cb);
+  void wifi_unregister_send_pkt_freedom_cb(void);
+  int wifi_send_pkt_freedom(uint8 *buf, int len, bool sys_seq);
 }
-#endif
 
 #include <ESP8266WiFi.h>
 
@@ -432,4 +436,3 @@ void loop() {
     }
   }
 }
-
